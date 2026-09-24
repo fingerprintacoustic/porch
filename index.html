@@ -42,6 +42,7 @@ img{max-width:100%;display:block}
 :focus-visible{outline:2px solid var(--brand);outline-offset:2px;border-radius:4px}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 [hidden]{display:none !important}
+.no-uploads [data-upload]{display:none !important}
 .ic{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
 .ic.solid{fill:currentColor;stroke:none}
 
@@ -430,6 +431,9 @@ const firebaseConfig = {
   messagingSenderId: '539350816782',
   appId: '1:539350816782:web:9cb932b632a102ef95c45f'
 };
+// Photo uploads need Firebase Storage, which requires the pay-as-you-go (Blaze) plan.
+// Leave false on the free plan; set true after enabling Storage and deploying storage.rules.
+const UPLOADS = false;
 const PAGE = 20;               // posts per page
 const MAX_POST = 2000;         // characters
 const MAX_COMMENT = 1000;
@@ -1062,7 +1066,7 @@ function composerEl(onPosted, startKind = 'post') {
       <textarea id="compose-text" rows="2" placeholder="${KINDS[kind].placeholder}"></textarea>
       <div class="preview" hidden><img alt="Selected image"><button class="icon-btn" type="button" aria-label="Remove image">${icon('x')}</button></div>
       <div class="composer-bar">
-        <label class="icon-btn" title="Add a photo" style="cursor:pointer">${icon('image')}<span class="sr">Add a photo</span>
+        <label class="icon-btn" title="Add a photo" style="cursor:pointer" data-upload>${icon('image')}<span class="sr">Add a photo</span>
           <input type="file" accept="image/*" hidden></label>
         <span class="count" aria-live="polite"></span>
         <button class="btn" type="submit" disabled>Post</button>
@@ -1480,7 +1484,7 @@ function viewSettings(view) {
   const me = S.me;
   const prof = h(`<form class="section"><h2>Profile</h2>
     <div class="avatar-edit"><span data-av>${avatar(me, 72)}</span>
-      <div><label class="btn ghost small" style="cursor:pointer">Change photo<input type="file" accept="image/*" hidden></label>
+      <div><label class="btn ghost small" style="cursor:pointer" data-upload>Change photo<input type="file" accept="image/*" hidden></label>
       ${me.photoURL ? '<button class="linkish" type="button" data-rmphoto style="margin-left:.75rem">Remove</button>' : ''}</div></div>
     <div class="field"><label for="st-name">Name</label><input id="st-name" class="input" maxlength="50" value="${esc(me.displayName)}"></div>
     <div class="field"><label for="st-user">Username</label><input id="st-user" class="input" value="@${esc(me.username)}" disabled></div>
@@ -1851,7 +1855,7 @@ async function viewChat(view, id, alive) {
   }
   const bar = h(`<form class="chat-bar">
     <div class="preview" hidden><img alt="Selected photo"><button class="icon-btn" type="button" aria-label="Remove photo">${icon('x')}</button></div>
-    <label class="icon-btn" title="Add a photo" style="cursor:pointer;height:42px;width:42px">${icon('image')}<span class="sr">Add a photo</span><input type="file" accept="image/*" hidden></label>
+    <label class="icon-btn" title="Add a photo" style="cursor:pointer;height:42px;width:42px" data-upload>${icon('image')}<span class="sr">Add a photo</span><input type="file" accept="image/*" hidden></label>
     <label class="sr" for="msg-text">Message</label>
     <textarea id="msg-text" class="input" rows="1" maxlength="4000" placeholder="Message"></textarea>
     <button class="btn" type="submit" aria-label="Send" disabled>${icon('send')}</button></form>`);
@@ -1969,6 +1973,7 @@ async function loadSuggestions() {
 
 /* ================= BOOT ================= */
 applyTheme(currentTheme());
+document.body.classList.toggle('no-uploads', !UPLOADS);
 if (!configured) {
   showScreen('setup');
 } else {

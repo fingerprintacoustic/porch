@@ -33,7 +33,7 @@ A Christian social network for sharing prayer requests, testimonies, praise repo
    - `reports`: `status` ascending, `createdAt` descending
 
    If you skip this, the first feed load logs an error in the console with a one-click link to create the missing index.
-5. **Storage:** enable Cloud Storage and paste `storage.rules` into its *Rules* tab. Newer Firebase projects need the pay-as-you-go Blaze plan for Storage. It keeps a free tier, but set a budget alert.
+5. **Storage (optional, for photo uploads):** the app runs on the free Spark plan with photo uploads turned off (`UPLOADS = false` in `index.html`). Everything else works, and Google profile pictures still show. To turn photos on later: upgrade to the pay-as-you-go Blaze plan (it keeps the same free allowances; set a budget alert), enable Storage, run `firebase deploy --only storage`, and set `UPLOADS = true`.
 6. **Make yourself an admin:** in Firestore, create a collection called `admins` with a document whose ID is your user UID (from Authentication → Users). Add any field, such as `role: "admin"`. The Moderation link appears after you reload.
 
 Alternatively, with the Firebase CLI, run `firebase deploy --only firestore,storage` to push the rules and indexes in one go (`firebase.json` is included).

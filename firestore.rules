@@ -1,0 +1,164 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function isMe(uid) { return signedIn() && request.auth.uid == uid; }
+    function userPath(uid) { return /databases/$(database)/documents/users/$(uid); }
+    function isAdmin() {
+      return signedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+    function notBanned() {
+      return signedIn()
+        && exists(userPath(request.auth.uid))
+        && get(userPath(request.auth.uid)).data.get('banned', false) != true;
+    }
+    // True when ownerUid has blocked the signed-in user.
+    function blockedBy(ownerUid) {
+      return exists(/databases/$(database)/documents/users/$(ownerUid)/blocked/$(request.auth.uid));
+    }
+    function onlyChanged(k) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([k]);
+    }
+
+    // Admins are added by hand in the Firebase console: admins/{uid} with any field.
+    match /admins/{uid} {
+      allow read: if isMe(uid);
+      allow write: if false;
+    }
+
+    match /usernames/{name} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.uid == request.auth.uid
+        && name.matches('^[a-z0-9_]{3,20}$')
+        && getAfter(userPath(request.auth.uid)).data.usernameLower == name;
+      allow update, delete: if false;
+    }
+
+    match /users/{uid} {
+      allow read: if signedIn();
+
+      allow create: if isMe(uid)
+        && request.resource.data.keys().hasOnly(['uid','username','usernameLower','displayName','displayNameLower','bio','photoURL','createdAt','banned'])
+        && request.resource.data.uid == uid
+        && request.resource.data.banned == false
+        && request.resource.data.usernameLower == request.resource.data.username.lower()
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() > 0
+        && request.resource.data.displayName.size() <= 50
+        && getAfter(/databases/$(database)/documents/usernames/$(request.resource.data.usernameLower)).data.uid == uid;
+
+      allow update: if (isMe(uid) && notBanned()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName','displayNameLower','bio','photoURL'])
+          && request.resource.data.displayName is string
+          && request.resource.data.displayName.size() > 0
+          && request.resource.data.displayName.size() <= 50
+          && request.resource.data.bio is string
+          && request.resource.data.bio.size() <= 300)
+        || (isAdmin() && onlyChanged('banned'));
+
+      allow delete: if false;
+
+      // users/{uid}/following/{target} and users/{target}/followers/{uid} are always written together.
+      match /following/{target} {
+        allow read: if signedIn();
+        allow create: if isMe(uid) && notBanned() && target != uid && !blockedBy(target)
+          && existsAfter(/databases/$(database)/documents/users/$(target)/followers/$(uid));
+        allow delete: if isMe(uid) || isMe(target);
+      }
+
+      match /followers/{follower} {
+        allow read: if signedIn();
+        allow create: if isMe(follower) && notBanned() && follower != uid && !blockedBy(uid)
+          && existsAfter(/databases/$(database)/documents/users/$(follower)/following/$(uid));
+        allow delete: if isMe(follower) || isMe(uid);
+      }
+
+      match /blocked/{target} {
+        allow read, write: if isMe(uid);
+      }
+
+      match /notifications/{nid} {
+        allow read, delete: if isMe(uid);
+        allow update: if isMe(uid) && onlyChanged('read');
+        allow create: if signedIn() && notBanned()
+          && uid != request.auth.uid
+          && !blockedBy(uid)
+          && request.resource.data.keys().hasOnly(['type','fromUid','postId','read','createdAt'])
+          && request.resource.data.fromUid == request.auth.uid
+          && request.resource.data.type in ['like','comment','follow']
+          && request.resource.data.read == false;
+      }
+    }
+
+    match /posts/{postId} {
+      function postPath() { return /databases/$(database)/documents/posts/$(postId); }
+      function likePath() { return /databases/$(database)/documents/posts/$(postId)/likes/$(request.auth.uid); }
+
+      allow read: if signedIn();
+
+      allow create: if notBanned()
+        && request.resource.data.keys().hasOnly(['authorId','text','imageURL','imagePath','createdAt','likeCount','commentCount'])
+        && request.resource.data.authorId == request.auth.uid
+        && request.resource.data.likeCount == 0
+        && request.resource.data.commentCount == 0
+        && request.resource.data.text is string
+        && request.resource.data.text.size() <= 2000
+        && (request.resource.data.text.size() > 0 || request.resource.data.imageURL != null)
+        && request.resource.data.createdAt == request.time;
+
+      // Counters can only move by one, and a like count change must match a like doc appearing/disappearing.
+      allow update: if notBanned() && (
+          (onlyChanged('likeCount') && (
+            (request.resource.data.likeCount == resource.data.likeCount + 1 && !exists(likePath()) && existsAfter(likePath()))
+            || (request.resource.data.likeCount == resource.data.likeCount - 1 && exists(likePath()) && !existsAfter(likePath()))
+          ))
+          || (onlyChanged('commentCount') && (
+            request.resource.data.commentCount == resource.data.commentCount + 1
+            || request.resource.data.commentCount == resource.data.commentCount - 1
+          ))
+        );
+
+      allow delete: if (signedIn() && resource.data.authorId == request.auth.uid) || isAdmin();
+
+      match /likes/{likerId} {
+        allow read: if signedIn();
+        allow create: if isMe(likerId) && notBanned()
+          && !blockedBy(get(postPath()).data.authorId)
+          && getAfter(postPath()).data.likeCount == get(postPath()).data.likeCount + 1;
+        allow delete: if isMe(likerId) || isAdmin()
+          || (signedIn() && get(postPath()).data.authorId == request.auth.uid);
+      }
+
+      match /comments/{commentId} {
+        allow read: if signedIn();
+        allow create: if notBanned()
+          && request.resource.data.keys().hasOnly(['authorId','text','createdAt'])
+          && request.resource.data.authorId == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 1000
+          && request.resource.data.createdAt == request.time
+          && !blockedBy(get(postPath()).data.authorId)
+          && getAfter(postPath()).data.commentCount == get(postPath()).data.commentCount + 1;
+        allow delete: if signedIn() && (
+          resource.data.authorId == request.auth.uid
+          || get(postPath()).data.authorId == request.auth.uid
+          || isAdmin());
+      }
+    }
+
+    match /reports/{rid} {
+      allow create: if signedIn()
+        && request.resource.data.reporterId == request.auth.uid
+        && request.resource.data.status == 'open'
+        && request.resource.data.targetType in ['post','comment','user']
+        && request.resource.data.reason is string
+        && request.resource.data.reason.size() <= 100
+        && request.resource.data.details is string
+        && request.resource.data.details.size() <= 1000;
+      allow read, update, delete: if isAdmin();
+    }
+  }
+}

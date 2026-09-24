@@ -12,6 +12,7 @@ A Christian social network for sharing prayer requests, testimonies, praise repo
 - **Prayer Wall** feed of prayer requests; reacting says **Praying** (on prayer requests) or **Amen** (on everything else)
 - Verse of the day (KJV) in the sidebar and at the top of Home on smaller screens
 - Bible references in posts (e.g. `John 3:16`, `1 Cor 13:4-7`) link to BibleGateway
+- **Messages** (WhatsApp-style): one-to-one and group chats with photos, live updates, unread badges, Sent/Seen receipts, and delete-for-everyone. To cut down on spam, you can only message, or add to a group, people who follow you and whom you follow back. Group admins can add, remove, and rename; anyone can leave.
 - Text and photo posts (photos resized to 1600px JPEG in the browser before upload)
 - Comments, share links, @mentions, and auto-linked URLs
 - Live notification badge for likes, comments, and follows
@@ -25,9 +26,10 @@ A Christian social network for sharing prayer requests, testimonies, praise repo
 1. **Create a Firebase project** at console.firebase.google.com and add a Web app. Copy its config into `firebaseConfig` near the top of the script in `index.html`. Change `APP_NAME` there if you rename the app.
 2. **Authentication:** enable the Email/Password and Google providers. Under *Settings → Authorized domains*, add your GitHub Pages subdomain.
 3. **Firestore:** create the database in production mode, then paste `firestore.rules` into the *Rules* tab.
-4. **Indexes:** create the three composite indexes in `firestore.indexes.json` under Firestore → Indexes:
+4. **Indexes:** create the four composite indexes in `firestore.indexes.json` under Firestore → Indexes:
    - `posts`: `authorId` ascending, `createdAt` descending
    - `posts`: `kind` ascending, `createdAt` descending (Prayer Wall)
+   - `chats`: `members` array-contains, `updatedAt` descending (Messages)
    - `reports`: `status` ascending, `createdAt` descending
 
    If you skip this, the first feed load logs an error in the console with a one-click link to create the missing index.
@@ -62,6 +64,8 @@ Then enable GitHub Pages on `main`, add a Dynadot CNAME for the subdomain, and a
 | `users/{uid}/notifications/{id}` | like, comment, and follow notifications |
 | `posts/{id}` | authorId, kind (`post` · `prayer` · `praise` · `testimony` · `verse`), text, imageURL, likeCount (Amens / Praying), commentCount |
 | `posts/{id}/likes/{uid}` · `comments/{id}` | likes and comments |
+| `chats/{id}` | type (`dm` · `group`), members, admins, name, lastMessage, updatedAt, reads (per-member last-read time). DM ids are the two uids sorted and joined with `_` |
+| `chats/{id}/messages/{id}` | fromUid, text, imageURL, createdAt, deleted |
 | `reports/{id}` | moderation queue |
 | `admins/{uid}` | admin allow-list (console only) |
 
@@ -72,5 +76,7 @@ The security rules enforce ownership, make blocked users unable to follow, like,
 - **Feed fan-in:** the Following feed queries posts in batches of 30 authors. It's fine for hundreds of follows, but slower past about 1,000. The upgrade is a Cloud Function that fans each new post out to followers' feed documents.
 - **Comment count trust:** the rules allow `commentCount` to move by one at a time but can't verify a matching comment was written. A Cloud Function trigger would make it exact.
 - **Orphaned images:** when an admin removes someone else's post, the image file stays in Storage.
-- **No push notifications** outside the open app, **no DMs, groups, or video** yet. These are phase two.
+- **No push notifications** outside the open app (needs Cloud Messaging and a Cloud Function), and **no video, calls, or typing indicators** yet.
+- **Messages aren't end-to-end encrypted.** The security rules keep them private between members, but the Firebase project owner could read them in the console.
+- **Chats load the latest 150 messages**, and the chat list shows the 100 most recent conversations.
 - **Posts are all public** to signed-in users. Followers-only visibility is also phase two.

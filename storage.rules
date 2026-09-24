@@ -17,5 +17,17 @@ service firebase.storage {
         && request.resource.contentType.matches('image/.*');
       allow delete: if request.auth != null && request.auth.uid == uid;
     }
+    // Chat photos: chats/{chatId}/{uid}/{file}, readable by chat members only.
+    match /chats/{chatId}/{uid}/{file} {
+      function member() {
+        return request.auth != null
+          && request.auth.uid in firestore.get(/databases/(default)/documents/chats/$(chatId)).data.members;
+      }
+      allow read: if member();
+      allow create: if member() && request.auth.uid == uid
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+      allow delete: if request.auth != null && request.auth.uid == uid;
+    }
   }
 }

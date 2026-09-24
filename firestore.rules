@@ -150,6 +150,97 @@ service cloud.firestore {
       }
     }
 
+    // ---------- Messaging ----------
+    // chats/{chatId}: type 'dm' (id = "<uidA>_<uidB>", sorted) or 'group'.
+    // Only mutual followers can start a DM or be added to a group, to cut down on spam.
+    function follows(a, b) { return exists(/databases/$(database)/documents/users/$(a)/following/$(b)); }
+    function mutual(other) { return follows(request.auth.uid, other) && follows(other, request.auth.uid); }
+    function chatPath(chatId) { return /databases/$(database)/documents/chats/$(chatId); }
+    function isMember(chatId) { return signedIn() && request.auth.uid in get(chatPath(chatId)).data.members; }
+
+    match /chats/{chatId} {
+      function d() { return request.resource.data; }
+      function was() { return resource.data; }
+      function changed() { return d().diff(was()).affectedKeys(); }
+      function isChatAdmin() { return request.auth.uid in was().get('admins', []); }
+
+      // A missing chat is readable so the app can check whether a DM exists yet.
+      allow read: if signedIn() && (resource == null || request.auth.uid in resource.data.members);
+
+      allow create: if notBanned()
+        && d().keys().hasOnly(['type','members','admins','name','createdBy','createdAt','updatedAt','lastMessage','reads'])
+        && d().createdBy == request.auth.uid
+        && d().createdAt == request.time
+        && d().updatedAt == request.time
+        && d().lastMessage == null
+        && d().reads == {}
+        && (
+          (d().type == 'dm'
+            && d().members.size() == 2
+            && d().members[0] < d().members[1]
+            && chatId == d().members[0] + '_' + d().members[1]
+            && request.auth.uid in d().members
+            && mutual(d().members[0] == request.auth.uid ? d().members[1] : d().members[0])
+            && !blockedBy(d().members[0]) && !blockedBy(d().members[1]))
+          || (d().type == 'group'
+            && d().members == [request.auth.uid]
+            && d().admins == [request.auth.uid]
+            && d().name is string && d().name.size() > 0 && d().name.size() <= 60)
+        );
+
+      allow update: if signedIn() && request.auth.uid in was().members && (
+          // New message or mark as read: only your own read marker can change.
+          (changed().hasOnly(['lastMessage','updatedAt','reads'])
+            && d().reads.diff(was().reads).affectedKeys().hasOnly([request.auth.uid])
+            && (!('lastMessage' in changed()) || d().lastMessage.fromUid == request.auth.uid))
+          // Group admin adds one mutual follower (appended to the end).
+          || (was().type == 'group' && isChatAdmin() && notBanned()
+            && changed().hasOnly(['members'])
+            && d().members.size() == was().members.size() + 1
+            && d().members.size() <= 100
+            && d().members.hasAll(was().members)
+            && mutual(d().members[was().members.size()])
+            && !blockedBy(d().members[was().members.size()]))
+          // Leave a group (removes you from members and admins).
+          || (was().type == 'group'
+            && changed().hasOnly(['members','admins'])
+            && d().members.toSet() == was().members.toSet().difference([request.auth.uid].toSet())
+            && d().admins.toSet() == was().admins.toSet().difference([request.auth.uid].toSet()))
+          // Group admin removes one other member, or renames the group.
+          || (was().type == 'group' && isChatAdmin()
+            && changed().hasOnly(['members','admins'])
+            && d().members.size() == was().members.size() - 1
+            && was().members.hasAll(d().members)
+            && was().admins.hasAll(d().admins))
+          || (was().type == 'group' && isChatAdmin()
+            && changed().hasOnly(['name'])
+            && d().name is string && d().name.size() > 0 && d().name.size() <= 60)
+        );
+
+      allow delete: if false;
+
+      match /messages/{mid} {
+        allow read: if isMember(chatId);
+        allow create: if notBanned() && isMember(chatId)
+          && request.resource.data.keys().hasOnly(['fromUid','text','imageURL','imagePath','createdAt'])
+          && request.resource.data.fromUid == request.auth.uid
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.text is string
+          && request.resource.data.text.size() <= 4000
+          && (request.resource.data.text.size() > 0 || request.resource.data.imageURL != null)
+          // In a DM, neither person can have blocked the other.
+          && (get(chatPath(chatId)).data.type == 'group'
+            || (!blockedBy(get(chatPath(chatId)).data.members[0]) && !blockedBy(get(chatPath(chatId)).data.members[1])));
+        // "Delete for everyone": the sender blanks the message.
+        allow update: if signedIn() && resource.data.fromUid == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deleted','text','imageURL','imagePath'])
+          && request.resource.data.deleted == true
+          && request.resource.data.text == ''
+          && request.resource.data.imageURL == null;
+        allow delete: if false;
+      }
+    }
+
     match /reports/{rid} {
       allow create: if signedIn()
         && request.resource.data.reporterId == request.auth.uid

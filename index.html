@@ -196,6 +196,44 @@ textarea.input{resize:vertical;min-height:90px}
 .verse cite:hover{text-decoration:underline}
 @media (min-width:1101px){.votd{display:none}}
 
+/* Messages */
+.chat-row{display:flex;gap:.8rem;align-items:center;padding:.85rem 1rem;border-bottom:1px solid var(--line)}
+.chat-row:hover{background:var(--hover)}
+.chat-row .who{flex:1;min-width:0;line-height:1.3}
+.chat-row .top{display:flex;gap:.5rem;align-items:baseline}
+.chat-row .top b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chat-row .top time{color:var(--muted);font-size:.85rem;flex:none}
+.chat-row .last{color:var(--muted);font-size:.93rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+.chat-row.unread .top b,.chat-row.unread .last{color:var(--ink);font-weight:700}
+.chat-row .dot{width:10px;height:10px;border-radius:50%;background:var(--glow);flex:none}
+.group-av{border-radius:50%;flex:none;display:grid;place-items:center;background:var(--brand-soft);color:var(--brand)}
+.chat{display:flex;flex-direction:column;min-height:calc(100vh - 57px)}
+.msgs{flex:1;padding:1rem .9rem .5rem;display:flex;flex-direction:column;gap:.2rem}
+.msg{max-width:78%;align-self:flex-start;display:flex;flex-direction:column;align-items:flex-start}
+.msg.me{align-self:flex-end;align-items:flex-end}
+.msg .from{font-size:.8rem;font-weight:700;color:var(--brand);margin:.5rem .6rem .1rem}
+.bubble{background:var(--bg);border-radius:18px;padding:.5rem .85rem;white-space:pre-wrap;overflow-wrap:anywhere;position:relative}
+.msg.me .bubble{background:var(--brand);color:var(--brand-ink)}
+.msg.me .bubble a{color:inherit;text-decoration:underline}
+.bubble.deleted{font-style:italic;color:var(--muted);background:transparent;border:1px dashed var(--line)}
+.msg.me .bubble.deleted{color:var(--muted);background:transparent}
+.bubble .img{margin:-.2rem -.5rem .3rem;border-radius:12px;overflow:hidden;display:block;max-width:280px}
+.bubble .img:only-child{margin:-.2rem -.5rem}
+.msg .meta{font-size:.75rem;color:var(--muted);margin:.15rem .5rem .35rem}
+.day-sep{align-self:center;font-size:.78rem;font-weight:700;color:var(--muted);background:var(--bg);padding:.2rem .7rem;border-radius:var(--r-pill);margin:.75rem 0 .4rem}
+.chat-bar{position:sticky;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding:.6rem .75rem;display:flex;gap:.5rem;align-items:flex-end}
+.chat-bar textarea{flex:1;resize:none;max-height:140px;min-height:42px;border-radius:21px;padding:.55rem 1rem}
+.chat-bar .preview{position:absolute;bottom:100%;left:.75rem;max-width:160px;margin:0 0 .5rem}
+.chat-bar .btn{height:42px;width:42px;padding:0;border-radius:50%}
+.pick-list{max-height:50vh;overflow:auto;margin:.5rem 0}
+.pick-list label{display:flex;align-items:center;gap:.7rem;padding:.45rem .3rem;border-radius:var(--r-s);cursor:pointer}
+.pick-list label:hover{background:var(--hover)}
+.pick-list label input{margin-left:auto;width:18px;height:18px}
+@media (max-width:640px){
+  .chat{min-height:calc(100vh - 57px - 64px - 53px)}
+  .chat-bar{bottom:calc(61px + env(safe-area-inset-bottom,0px))}
+}
+
 /* Comments */
 .comment{display:flex;gap:.7rem;padding:.85rem 1rem;border-bottom:1px solid var(--line)}
 .comment .post-text{font-size:.98rem}
@@ -343,7 +381,7 @@ textarea.input{resize:vertical;min-height:90px}
 <div id="screen-app" hidden>
   <header class="topbar">
     <a class="wordmark js-wordmark" href="#/home"><span class="txt app-name-lower">porch</span><span class="light"></span></a>
-    <a class="icon-btn" href="#/settings" aria-label="Settings" data-icon="gear"></a>
+    <span><a class="icon-btn" href="#/search" aria-label="Search" data-icon="search"></a><a class="icon-btn" href="#/settings" aria-label="Settings" data-icon="gear"></a></span>
   </header>
   <div class="shell">
     <nav class="rail" aria-label="Main">
@@ -376,7 +414,7 @@ import {
 import {
   getFirestore, doc, getDoc, setDoc, updateDoc, addDoc, collection, query, where, orderBy,
   limit, startAfter, getDocs, onSnapshot, serverTimestamp, increment, writeBatch,
-  getCountFromServer, documentId
+  getCountFromServer, documentId, arrayUnion, arrayRemove
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import {
   getStorage, ref as storageRef, uploadBytes, getDownloadURL, deleteObject
@@ -455,7 +493,8 @@ const S = {
   me: null, isAdmin: false,
   following: new Set(), blocked: new Set(),
   users: new Map(), unread: 0,
-  unsubNotif: null, creating: false, routeToken: 0
+  unsubNotif: null, creating: false, routeToken: 0,
+  chats: new Map(), unsubChats: null, unreadChats: 0, unsubView: null, chatsLoaded: false
 };
 
 /* ================= HELPERS ================= */
@@ -479,6 +518,9 @@ const PATHS = {
   image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 17-5-5-9 8"/>',
   back: '<path d="M15 5l-7 7 7 7"/>',
   x: '<path d="M6 6l12 12M18 6 6 18"/>',
+  chat: '<path d="M4 18.5V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H8z"/><path d="M8 9h8M8 12.5h5"/>',
+  send: '<path d="M4 12 20 4l-4 16-4-7z"/><path d="m12 13 8-9"/>',
+  group: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17" cy="9" r="2.8"/><path d="M16 14.2a5.5 5.5 0 0 1 5.5 5.8"/>',
   pray: '<path d="M12 4c-1 0-2 1-2 2.5V13l-3.5 3.5V20h4l1.5-2 1.5 2h4v-3.5L14 13V6.5C14 5 13 4 12 4z"/><path d="M12 6v11"/>',
   follow: '<circle cx="10" cy="8" r="4"/><path d="M3 21a7 7 0 0 1 14 0M19 8v6M16 11h6"/>'
 };
@@ -712,6 +754,8 @@ function bindAuthUI() {
 
 function endSession() {
   S.unsubNotif?.(); S.unsubNotif = null;
+  S.unsubChats?.(); S.unsubChats = null; S.unsubView?.(); S.unsubView = null;
+  S.chats = new Map(); S.unreadChats = 0; S.chatsLoaded = false;
   S.me = null; S.isAdmin = false; S.following = new Set(); S.blocked = new Set(); S.users.clear(); S.unread = 0;
 }
 
@@ -736,6 +780,7 @@ async function loadSession(user) {
     S.isAdmin = !!adm?.exists();
     S.users.set(user.uid, S.me);
     startNotifListener();
+    startChatListener();
     renderChrome();
     showScreen('app');
     route();
@@ -755,6 +800,7 @@ function startNotifListener() {
 function paintBadges() {
   $$('.js-wordmark').forEach(w => w.classList.toggle('lit', S.unread > 0));
   $$('[data-badge]').forEach(b => { b.hidden = !S.unread; b.textContent = S.unread > 98 ? '99+' : S.unread; });
+  $$('[data-mbadge]').forEach(b => { b.hidden = !S.unreadChats; b.textContent = S.unreadChats > 98 ? '99+' : S.unreadChats; });
 }
 
 /* ================= CHROME ================= */
@@ -762,9 +808,10 @@ function navItems() {
   const items = [
     { key: 'home', href: '#/home', label: 'Home', icon: 'home' },
     { key: 'prayer', href: '#/prayer', label: 'Prayer Wall', icon: 'pray' },
-    { key: 'discover', href: '#/discover', label: 'Discover', icon: 'compass' },
-    { key: 'search', href: '#/search', label: 'Search', icon: 'search' },
-    { key: 'notifications', href: '#/notifications', label: 'Notifications', icon: 'bell', badge: true },
+    { key: 'discover', href: '#/discover', label: 'Discover', icon: 'compass', railOnly: true },
+    { key: 'messages', href: '#/messages', label: 'Messages', icon: 'chat', badge: 'mbadge' },
+    { key: 'notifications', href: '#/notifications', label: 'Notifications', icon: 'bell', badge: 'badge' },
+    { key: 'search', href: '#/search', label: 'Search', icon: 'search', railOnly: true },
     { key: 'me', href: `#/u/${S.me.usernameLower}`, label: 'Profile', icon: 'user' },
     { key: 'settings', href: '#/settings', label: 'Settings', icon: 'gear', railOnly: true }
   ];
@@ -775,9 +822,9 @@ function navItems() {
 function renderChrome() {
   const items = navItems();
   $('#rail-links').innerHTML = items.map(i =>
-    `<a class="nav-link" href="${i.href}" data-nav="${i.key}">${icon(i.icon)}<span class="lbl">${i.label}</span>${i.badge ? '<span class="badge" data-badge hidden></span>' : ''}</a>`).join('');
+    `<a class="nav-link" href="${i.href}" data-nav="${i.key}">${icon(i.icon)}<span class="lbl">${i.label}</span>${i.badge ? `<span class="badge" data-${i.badge} hidden></span>` : ''}</a>`).join('');
   $('#tabbar').innerHTML = items.filter(i => !i.railOnly).map(i =>
-    `<a href="${i.href}" data-nav="${i.key}" aria-label="${i.label}">${icon(i.icon)}${i.badge ? '<span class="badge" data-badge hidden></span>' : ''}</a>`).join('');
+    `<a href="${i.href}" data-nav="${i.key}" aria-label="${i.label}">${icon(i.icon)}${i.badge ? `<span class="badge" data-${i.badge} hidden></span>` : ''}</a>`).join('');
   $('#rail-me').innerHTML = `${avatar(S.me, 40)}<span class="who"><b>${esc(S.me.displayName)}</b><br><span class="muted">@${esc(S.me.username)}</span></span>`;
   $$('[data-icon]').forEach(el => el.innerHTML = icon(el.dataset.icon));
   $('#aside-votd').innerHTML = verseHTML();
@@ -805,6 +852,7 @@ async function route() {
   if (!S.me) return;
   const [, name = 'home', ...rest] = (location.hash || '#/home').split('/');
   const arg = decodeURIComponent(rest.join('/') || '');
+  S.unsubView?.(); S.unsubView = null;
   const token = ++S.routeToken;
   const alive = () => token === S.routeToken;
   const view = $('#view');
@@ -816,6 +864,8 @@ async function route() {
       case 'home': return viewHome(view);
       case 'discover': return viewDiscover(view);
       case 'prayer': return viewPrayer(view);
+      case 'messages': return viewMessages(view);
+      case 'chat': return await viewChat(view, arg, alive);
       case 'u': return await viewProfile(view, arg, alive);
       case 'post': return await viewPost(view, arg, alive);
       case 'notifications': return await viewNotifications(view, alive);
@@ -1229,6 +1279,11 @@ async function viewProfile(view, username, alive) {
       $('[data-fc]', top).textContent = followerCount;
       $('[data-fc]', top).nextElementSibling.textContent = followerCount === 1 ? 'follower' : 'followers';
     }}));
+    if (followsMe && S.following.has(u.uid) && !u.banned) {
+      const msg = h(`<button class="btn ghost" type="button">${icon('chat')} Message</button>`);
+      msg.onclick = () => openDM(u.uid);
+      actions.prepend(msg);
+    }
     const more = h(`<button class="icon-btn" type="button" aria-label="More options">${icon('more')}</button>`);
     more.onclick = () => {
       const items = [
@@ -1557,6 +1612,345 @@ async function viewAdmin(view, alive) {
     btns.append(dismiss);
     view.append(card);
   }
+}
+
+/* ================= MESSAGES ================= */
+// chats/{id}: DMs use id "<uidA>_<uidB>" (sorted) so each pair has one conversation.
+// Only mutual followers can start a DM or be added to a group; the rules enforce this too.
+const dmId = (a, b) => [a, b].sort().join('_');
+const chatOther = c => c.type === 'dm' ? c.members.find(m => m !== S.me.uid) : null;
+const chatTitle = c => c.type === 'group' ? c.name : (S.users.get(chatOther(c))?.displayName || 'Conversation');
+const chatAvatar = (c, size) => c.type === 'group'
+  ? `<span class="group-av" style="width:${size}px;height:${size}px" aria-hidden="true">${icon('group')}</span>`
+  : avatar(S.users.get(chatOther(c)), size);
+function isUnread(c) {
+  if (!c.lastMessage || c.lastMessage.fromUid === S.me.uid) return false;
+  const r = toDate(c.reads?.[S.me.uid]), u = toDate(c.updatedAt);
+  return !r || (u && u > r);
+}
+function dayLabel(d) {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const diff = Math.round((today - new Date(d).setHours(0, 0, 0, 0)) / 86400000);
+  if (diff === 0) return 'Today';
+  if (diff === 1) return 'Yesterday';
+  return d.toLocaleDateString(undefined, { weekday: diff < 7 ? 'long' : undefined, month: 'short', day: 'numeric', ...(d.getFullYear() !== today.getFullYear() ? { year: 'numeric' } : {}) });
+}
+
+function startChatListener() {
+  S.unsubChats?.();
+  const q = query(collection(db, 'chats'), where('members', 'array-contains', S.me.uid), orderBy('updatedAt', 'desc'), limit(100));
+  S.unsubChats = onSnapshot(q, snap => {
+    S.chats = new Map(snap.docs.map(d => [d.id, { id: d.id, ...d.data({ serverTimestamps: 'estimate' }) }]));
+    S.chatsLoaded = true;
+    S.unreadChats = [...S.chats.values()].filter(c => isUnread(c) && !S.blocked.has(chatOther(c))).length;
+    paintBadges();
+    S.onChats?.();
+  }, err => console.warn('chats', err));
+}
+
+// People who follow you and whom you follow back.
+async function mutualFollowers() {
+  const snap = await getDocs(query(collection(db, 'users', S.me.uid, 'followers'), limit(500)));
+  const ids = snap.docs.map(d => d.id).filter(id => S.following.has(id) && !S.blocked.has(id));
+  return (await getUsers(ids)).filter(u => u.usernameLower && !u.banned)
+    .sort((a, b) => a.displayName.localeCompare(b.displayName));
+}
+
+async function openDM(uid) {
+  const id = dmId(S.me.uid, uid), ref = doc(db, 'chats', id);
+  try {
+    if (!S.chats.has(id) && !(await getDoc(ref)).exists()) {
+      await setDoc(ref, { type: 'dm', members: [S.me.uid, uid].sort(), createdBy: S.me.uid,
+        createdAt: serverTimestamp(), updatedAt: serverTimestamp(), lastMessage: null, reads: {} });
+    }
+    location.hash = `#/chat/${id}`;
+  } catch (e) {
+    toast(e.code === 'permission-denied' ? 'You can message people who follow you and whom you follow back.' : errText(e));
+  }
+}
+
+function viewMessages(view) {
+  const head = viewHead('Messages');
+  const newBtn = h('<button class="btn small" type="button" style="margin-left:auto">New message</button>');
+  newBtn.onclick = newChatDialog;
+  $('.row', head).append(newBtn);
+  const list = h('<div><div class="feed-foot"><div class="spinner" role="status" aria-label="Loading"></div></div></div>');
+  view.append(head, list);
+  const paint = async () => {
+    if (!S.chatsLoaded) return;
+    const chats = [...S.chats.values()].filter(c => !S.blocked.has(chatOther(c)));
+    await getUsers(chats.flatMap(c => [chatOther(c), c.lastMessage?.fromUid]).filter(Boolean));
+    if (!list.isConnected) return;
+    list.innerHTML = '';
+    if (!chats.length) {
+      list.innerHTML = emptyState('No conversations yet', 'Message a brother or sister, or start a group for your Bible study, ministry, or prayer team.',
+        '<button class="btn" type="button">Start a conversation</button>');
+      $('button', list).onclick = newChatDialog;
+      return;
+    }
+    chats.forEach(c => list.append(chatRow(c)));
+  };
+  S.onChats = paint;
+  S.unsubView = () => { S.onChats = null; };
+  paint();
+}
+
+function chatRow(c) {
+  const lm = c.lastMessage, unread = isUnread(c);
+  const who = !lm ? '' : lm.fromUid === S.me.uid ? 'You: '
+    : c.type === 'group' ? `${(S.users.get(lm.fromUid)?.displayName || '').split(' ')[0]}: ` : '';
+  const preview = !lm ? 'No messages yet' : who + (lm.text || (lm.photo ? '📷 Photo' : ''));
+  return h(`<a class="chat-row ${unread ? 'unread' : ''}" href="#/chat/${esc(c.id)}">${chatAvatar(c, 48)}
+    <span class="who"><span class="top"><b>${esc(chatTitle(c))}</b>${lm ? `<time>${timeAgo(c.updatedAt)}</time>` : ''}</span>
+    <span class="last">${esc(preview)}</span></span>${unread ? '<span class="dot"><span class="sr">Unread</span></span>' : ''}</a>`);
+}
+
+async function newChatDialog() {
+  const box = h(`<div><h2>New message</h2>
+    <p class="muted" style="margin-top:0">You can message people who follow you and whom you follow back.</p>
+    <div class="list"><div class="spinner" style="margin:1rem auto"></div></div>
+    <div class="btns"><button class="btn ghost" type="button" data-group>${icon('group')} New group</button></div></div>`);
+  const close = openModal(box);
+  $('[data-group]', box).onclick = () => { close(); newGroupDialog(); };
+  try {
+    const people = await mutualFollowers();
+    const list = $('.list', box); list.innerHTML = '';
+    if (!people.length) list.innerHTML = '<p class="muted">No mutual followers yet. Once you and someone follow each other, you can message them.</p>';
+    for (const u of people) {
+      const row = h(`<button class="user-row" type="button" style="width:100%;text-align:left">${avatar(u, 42)}
+        <span class="who"><b>${esc(u.displayName)}</b><span>@${esc(u.username)}</span></span></button>`);
+      row.onclick = () => { close(); openDM(u.uid); };
+      list.append(row);
+    }
+  } catch (e) { $('.list', box).innerHTML = `<p class="err">${esc(errText(e))}</p>`; }
+}
+
+// Checkbox list of mutual followers, minus anyone in `exclude`.
+async function pickPeople(container, exclude = []) {
+  const people = (await mutualFollowers().catch(() => [])).filter(u => !exclude.includes(u.uid));
+  container.innerHTML = people.length
+    ? people.map(u => `<label>${avatar(u, 36)}<span><b>${esc(u.displayName)}</b> <span class="muted">@${esc(u.username)}</span></span><input type="checkbox" value="${esc(u.uid)}"></label>`).join('')
+    : '<p class="muted">No one else to add. Only people who follow you and whom you follow back can be added.</p>';
+  return () => $$('input:checked', container).map(i => i.value);
+}
+
+async function addMembers(ref, uids) {
+  let failed = 0;
+  for (const uid of uids) await updateDoc(ref, { members: arrayUnion(uid) }).catch(() => failed++);
+  if (failed) toast(`${failed} ${failed === 1 ? 'person' : 'people'} couldn’t be added.`);
+}
+
+async function newGroupDialog() {
+  const box = h(`<form><h2>New group</h2>
+    <div class="field"><label for="g-name">Group name</label><input id="g-name" class="input" maxlength="60" placeholder="e.g. Wednesday Bible Study"></div>
+    <p class="muted" style="margin:0">Add people</p>
+    <div class="pick-list"><div class="spinner" style="margin:1rem auto"></div></div>
+    <div class="btns"><button class="btn ghost" type="button" data-cancel>Cancel</button><button class="btn" type="submit">Create group</button></div></form>`);
+  const close = openModal(box);
+  $('[data-cancel]', box).onclick = close;
+  const picked = await pickPeople($('.pick-list', box));
+  box.onsubmit = async e => {
+    e.preventDefault();
+    const name = $('#g-name', box).value.trim();
+    if (!name) { toast('Give the group a name.'); $('#g-name', box).focus(); return; }
+    const btn = e.submitter; btn.disabled = true;
+    try {
+      const ref = doc(collection(db, 'chats'));
+      await setDoc(ref, { type: 'group', name, members: [S.me.uid], admins: [S.me.uid], createdBy: S.me.uid,
+        createdAt: serverTimestamp(), updatedAt: serverTimestamp(), lastMessage: null, reads: {} });
+      await addMembers(ref, picked());
+      close(); location.hash = `#/chat/${ref.id}`;
+    } catch (err) { toast(errText(err)); btn.disabled = false; }
+  };
+}
+
+async function viewChat(view, id, alive) {
+  const ref = doc(db, 'chats', id);
+  const snap = await getDoc(ref).catch(() => null);
+  if (!alive()) return;
+  if (!snap?.exists() || !snap.data().members.includes(S.me.uid)) {
+    view.append(viewHead('Messages', { back: true }), h(emptyState('This conversation isn’t available', 'You may have left it, or it no longer exists.', '<a class="btn" href="#/messages">Back to messages</a>')));
+    return;
+  }
+  let chat = { id, ...snap.data() };
+  await getUsers(chat.members);
+  if (!alive()) return;
+
+  const head = viewHead(chatTitle(chat), { back: true });
+  const info = h(`<button class="icon-btn" type="button" aria-label="${chat.type === 'group' ? 'Group info' : 'View profile'}" style="margin-left:auto">${icon(chat.type === 'group' ? 'group' : 'user')}</button>`);
+  info.onclick = () => chatInfo(chat);
+  $('.row', head).append(info);
+  const wrap = h('<div class="chat"><div class="msgs"></div></div>');
+  const msgs = $('.msgs', wrap);
+  view.append(head, wrap);
+
+  let list = [], first = true;
+  const seenText = m => {
+    if (m.pending) return ' · Sending…';
+    const t = toDate(m.createdAt);
+    const seen = chat.members.filter(x => x !== S.me.uid && toDate(chat.reads?.[x]) >= t);
+    if (!seen.length) return ' · Sent';
+    return chat.type === 'dm' ? ' · Seen' : ` · Seen by ${seen.length}`;
+  };
+  const render = () => {
+    msgs.innerHTML = '';
+    if (!list.length) { msgs.append(h(`<p class="muted" style="text-align:center;margin:auto 0">Say hello 👋</p>`)); return; }
+    const lastMine = list.filter(m => m.fromUid === S.me.uid).at(-1);
+    let prevDay = '';
+    list.forEach((m, i) => {
+      const d = toDate(m.createdAt) || new Date(), prev = list[i - 1], next = list[i + 1];
+      if (d.toDateString() !== prevDay) { msgs.append(h(`<div class="day-sep">${esc(dayLabel(d))}</div>`)); prevDay = d.toDateString(); }
+      const mine = m.fromUid === S.me.uid, u = S.users.get(m.fromUid) || {};
+      const showName = chat.type === 'group' && !mine && (prev?.fromUid !== m.fromUid || toDate(prev?.createdAt)?.toDateString() !== d.toDateString());
+      const nd = next && toDate(next.createdAt);
+      const showMeta = m === lastMine || !next || next.fromUid !== m.fromUid || !nd || nd - d > 5 * 60000;
+      const el = h(`<div class="msg ${mine ? 'me' : ''}">
+        ${showName ? `<a class="from" href="#/u/${esc(u.usernameLower || '')}">${esc(u.displayName || '')}</a>` : ''}
+        <div class="bubble ${m.deleted ? 'deleted' : ''}">${m.deleted ? 'This message was deleted'
+          : `${m.imageURL ? `<button type="button" class="img" data-img><img src="${esc(m.imageURL)}" alt="Photo" loading="lazy"></button>` : ''}${m.text ? richText(m.text) : ''}`}</div>
+        ${showMeta ? `<span class="meta">${d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}${m === lastMine ? seenText(m) : ''}</span>` : ''}</div>`);
+      $('[data-img]', el)?.addEventListener('click', () => lightbox(m.imageURL));
+      if (mine && !m.deleted && !m.pending) $('.bubble', el).addEventListener('click', e => {
+        if (e.target.closest('a,button')) return;
+        actionSheet([{ label: 'Delete for everyone', danger: true, onClick: async () => {
+          try {
+            await updateDoc(doc(db, 'chats', id, 'messages', m.id), { deleted: true, text: '', imageURL: null, imagePath: null });
+            if (m.imagePath) deleteObject(storageRef(storage, m.imagePath)).catch(() => {});
+          } catch (err) { toast(errText(err)); }
+        }}]);
+      });
+      msgs.append(el);
+    });
+  };
+  const markRead = () => {
+    if (document.hidden) return;
+    const lastOther = list.filter(m => m.fromUid !== S.me.uid).at(-1);
+    const r = toDate(chat.reads?.[S.me.uid]);
+    if (!lastOther || (r && r >= toDate(lastOther.createdAt))) return;
+    updateDoc(ref, { [`reads.${S.me.uid}`]: serverTimestamp() }).catch(() => {});
+  };
+
+  const unsubMsgs = onSnapshot(query(collection(db, 'chats', id, 'messages'), orderBy('createdAt', 'desc'), limit(150)), async s => {
+    list = s.docs.map(d => ({ id: d.id, pending: d.metadata.hasPendingWrites, ...d.data({ serverTimestamps: 'estimate' }) })).reverse();
+    await getUsers(list.map(m => m.fromUid));
+    if (!wrap.isConnected) return;
+    const nearBottom = first || innerHeight + scrollY >= document.documentElement.scrollHeight - 200;
+    render();
+    if (nearBottom) window.scrollTo(0, document.documentElement.scrollHeight);
+    first = false;
+    markRead();
+  }, err => { msgs.innerHTML = `<p class="err">${esc(errText(err))}</p>`; });
+  const unsubChat = onSnapshot(ref, s => { if (s.exists()) { chat = { id, ...s.data() }; if (list.length) render(); } }, () => {});
+  document.addEventListener('visibilitychange', markRead);
+  S.unsubView = () => { unsubMsgs(); unsubChat(); document.removeEventListener('visibilitychange', markRead); };
+
+  const other = chatOther(chat);
+  if (other && S.blocked.has(other)) {
+    wrap.append(h('<p class="muted" style="text-align:center;padding:1rem">You blocked this person. Unblock them from their profile to send messages.</p>'));
+    return;
+  }
+  const bar = h(`<form class="chat-bar">
+    <div class="preview" hidden><img alt="Selected photo"><button class="icon-btn" type="button" aria-label="Remove photo">${icon('x')}</button></div>
+    <label class="icon-btn" title="Add a photo" style="cursor:pointer;height:42px;width:42px">${icon('image')}<span class="sr">Add a photo</span><input type="file" accept="image/*" hidden></label>
+    <label class="sr" for="msg-text">Message</label>
+    <textarea id="msg-text" class="input" rows="1" maxlength="4000" placeholder="Message"></textarea>
+    <button class="btn" type="submit" aria-label="Send" disabled>${icon('send')}</button></form>`);
+  wrap.append(bar);
+  const ta = $('textarea', bar), send = $('button[type=submit]', bar), file = $('input[type=file]', bar), prev = $('.preview', bar);
+  let blob = null;
+  const refresh = () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 140) + 'px'; send.disabled = !ta.value.trim() && !blob; };
+  const clearImg = () => { blob = null; prev.hidden = true; file.value = ''; refresh(); };
+  ta.oninput = refresh;
+  // Enter sends on keyboards; on touch screens Enter adds a new line and the button sends.
+  ta.onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey && !matchMedia('(pointer: coarse)').matches) { e.preventDefault(); if (!send.disabled) bar.requestSubmit(); } };
+  $('.preview .icon-btn', bar).onclick = clearImg;
+  file.onchange = async () => {
+    const f = file.files[0]; if (!f) return;
+    try {
+      blob = await compressImage(f);
+      if (blob.size > 5 * 1024 * 1024) throw new Error('too large');
+      $('img', prev).src = URL.createObjectURL(blob); prev.hidden = false; refresh();
+    } catch { clearImg(); toast('That photo couldn’t be used. Try a smaller JPG or PNG.'); }
+  };
+  bar.onsubmit = async e => {
+    e.preventDefault();
+    const text = ta.value.trim(), img = blob;
+    if (!text && !img) return;
+    send.disabled = true; ta.value = ''; clearImg();
+    try {
+      let imageURL = null, imagePath = null;
+      if (img) {
+        imagePath = `chats/${id}/${S.me.uid}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.jpg`;
+        const r = storageRef(storage, imagePath);
+        await uploadBytes(r, img, { contentType: 'image/jpeg' });
+        imageURL = await getDownloadURL(r);
+      }
+      const b = writeBatch(db);
+      b.set(doc(collection(db, 'chats', id, 'messages')), { fromUid: S.me.uid, text, imageURL, imagePath, createdAt: serverTimestamp() });
+      b.update(ref, { lastMessage: { fromUid: S.me.uid, text: text.slice(0, 120), photo: !!imageURL },
+        updatedAt: serverTimestamp(), [`reads.${S.me.uid}`]: serverTimestamp() });
+      await b.commit();
+    } catch (err) { if (!ta.value) ta.value = text; refresh(); toast(errText(err)); }
+    ta.focus();
+  };
+  if (matchMedia('(pointer: fine)').matches) ta.focus();
+}
+
+async function chatInfo(chat) {
+  if (chat.type === 'dm') { location.hash = `#/u/${S.users.get(chatOther(chat))?.usernameLower || ''}`; return; }
+  const ref = doc(db, 'chats', chat.id);
+  const admin = chat.admins?.includes(S.me.uid);
+  const members = await getUsers(chat.members);
+  const box = h(`<div><h2>${esc(chat.name)}</h2><p class="muted" style="margin-top:0">${members.length} ${members.length === 1 ? 'member' : 'members'}</p>
+    <div class="list"></div><div class="btns" style="flex-wrap:wrap"></div></div>`);
+  const close = openModal(box);
+  const list = $('.list', box), btns = $('.btns', box);
+  for (const u of members) {
+    const row = userRow(u, close);
+    if (chat.admins?.includes(u.uid)) $('.who', row).insertAdjacentHTML('beforeend', '<span>Group admin</span>');
+    if (admin && u.uid !== S.me.uid) {
+      const rm = h('<button class="btn ghost small" type="button">Remove</button>');
+      rm.onclick = async () => {
+        try { await updateDoc(ref, { members: arrayRemove(u.uid), admins: arrayRemove(u.uid) }); row.remove(); toast(`Removed ${u.displayName}`); }
+        catch (e) { toast(errText(e)); }
+      };
+      row.append(rm);
+    }
+    list.append(row);
+  }
+  if (admin) {
+    const add = h('<button class="btn ghost" type="button">Add people</button>');
+    add.onclick = async () => {
+      close();
+      const f = h(`<form><h2>Add people</h2><div class="pick-list"><div class="spinner" style="margin:1rem auto"></div></div>
+        <div class="btns"><button class="btn ghost" type="button" data-cancel>Cancel</button><button class="btn" type="submit">Add</button></div></form>`);
+      const c2 = openModal(f);
+      $('[data-cancel]', f).onclick = c2;
+      const picked = await pickPeople($('.pick-list', f), chat.members);
+      f.onsubmit = async e => { e.preventDefault(); e.submitter.disabled = true; await addMembers(ref, picked()); c2(); toast('Group updated'); };
+    };
+    const rename = h('<button class="btn ghost" type="button">Rename</button>');
+    rename.onclick = async () => {
+      close();
+      const f = h(`<form><h2>Rename group</h2><div class="field"><label for="g-rename">Group name</label><input id="g-rename" class="input" maxlength="60" value="${esc(chat.name)}"></div>
+        <div class="btns"><button class="btn ghost" type="button" data-cancel>Cancel</button><button class="btn" type="submit">Save</button></div></form>`);
+      const c2 = openModal(f);
+      $('[data-cancel]', f).onclick = c2;
+      f.onsubmit = async e => {
+        e.preventDefault();
+        const name = $('#g-rename', f).value.trim(); if (!name) return;
+        try { await updateDoc(ref, { name }); c2(); $('.view-head h1')?.replaceChildren(name); toast('Group renamed'); } catch (err) { toast(errText(err)); }
+      };
+    };
+    btns.append(add, rename);
+  }
+  const leave = h('<button class="btn danger" type="button">Leave group</button>');
+  leave.onclick = async () => {
+    if (!await confirmBox(`Leave ${chat.name}?`, 'You won’t get new messages from this group unless an admin adds you back.', 'Leave')) return;
+    try { S.unsubView?.(); S.unsubView = null; await updateDoc(ref, { members: arrayRemove(S.me.uid), admins: arrayRemove(S.me.uid) }); close(); location.hash = '#/messages'; toast('You left the group'); }
+    catch (e) { toast(errText(e)); }
+  };
+  btns.append(leave);
 }
 
 /* ================= SIDEBAR ================= */

@@ -85,7 +85,7 @@ service cloud.firestore {
         allow create: if signedIn() && notBanned()
           && uid != request.auth.uid
           && !blockedBy(uid)
-          && request.resource.data.keys().hasOnly(['type','fromUid','postId','read','createdAt'])
+          && request.resource.data.keys().hasOnly(['type','fromUid','postId','read','createdAt','kind'])
           && request.resource.data.fromUid == request.auth.uid
           && request.resource.data.type in ['like','comment','follow']
           && request.resource.data.read == false;
@@ -99,7 +99,8 @@ service cloud.firestore {
       allow read: if signedIn();
 
       allow create: if notBanned()
-        && request.resource.data.keys().hasOnly(['authorId','text','imageURL','imagePath','createdAt','likeCount','commentCount'])
+        && request.resource.data.keys().hasOnly(['authorId','kind','text','imageURL','imagePath','createdAt','likeCount','commentCount'])
+        && request.resource.data.get('kind', 'post') in ['post','prayer','praise','testimony','verse']
         && request.resource.data.authorId == request.auth.uid
         && request.resource.data.likeCount == 0
         && request.resource.data.commentCount == 0

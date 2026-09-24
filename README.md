@@ -1,6 +1,6 @@
 # Porch
 
-A general-purpose social network MVP: single-file web app (`index.html`) on Firebase Auth, Firestore, and Storage, hosted on GitHub Pages.
+A Christian social network for sharing prayer requests, testimonies, praise reports, and scripture. It's a single-file web app (`index.html`) on Firebase Auth, Firestore, and Storage, hosted on GitHub Pages.
 
 ## Features
 
@@ -8,8 +8,12 @@ A general-purpose social network MVP: single-file web app (`index.html`) on Fire
 - Profiles with photo, bio, follower and following counts, and follower lists
 - Follow and unfollow
 - **Following** feed (you + people you follow) and **Discover** feed (everyone), with infinite scroll
+- Post types: Post, Prayer request, Praise report, Testimony, and Scripture, each tagged in the feed
+- **Prayer Wall** feed of prayer requests; reacting says **Praying** (on prayer requests) or **Amen** (on everything else)
+- Verse of the day (KJV) in the sidebar and at the top of Home on smaller screens
+- Bible references in posts (e.g. `John 3:16`, `1 Cor 13:4-7`) link to BibleGateway
 - Text and photo posts (photos resized to 1600px JPEG in the browser before upload)
-- Likes, comments, share links, @mentions, and auto-linked URLs
+- Comments, share links, @mentions, and auto-linked URLs
 - Live notification badge for likes, comments, and follows
 - People search by name or username
 - Block (also removes follows both ways) and report (posts, comments, and accounts)
@@ -21,8 +25,9 @@ A general-purpose social network MVP: single-file web app (`index.html`) on Fire
 1. **Create a Firebase project** at console.firebase.google.com and add a Web app. Copy its config into `firebaseConfig` near the top of the script in `index.html`. Change `APP_NAME` there if you rename the app.
 2. **Authentication:** enable the Email/Password and Google providers. Under *Settings → Authorized domains*, add your GitHub Pages subdomain.
 3. **Firestore:** create the database in production mode, then paste `firestore.rules` into the *Rules* tab.
-4. **Indexes:** create the two composite indexes in `firestore.indexes.json` under Firestore → Indexes:
+4. **Indexes:** create the three composite indexes in `firestore.indexes.json` under Firestore → Indexes:
    - `posts`: `authorId` ascending, `createdAt` descending
+   - `posts`: `kind` ascending, `createdAt` descending (Prayer Wall)
    - `reports`: `status` ascending, `createdAt` descending
 
    If you skip this, the first feed load logs an error in the console with a one-click link to create the missing index.
@@ -55,7 +60,7 @@ Then enable GitHub Pages on `main`, add a Dynadot CNAME for the subdomain, and a
 | `users/{uid}/following/{uid}` · `followers/{uid}` | follow edges, always written as a pair |
 | `users/{uid}/blocked/{uid}` | private block list |
 | `users/{uid}/notifications/{id}` | like, comment, and follow notifications |
-| `posts/{id}` | authorId, text, imageURL, likeCount, commentCount |
+| `posts/{id}` | authorId, kind (`post` · `prayer` · `praise` · `testimony` · `verse`), text, imageURL, likeCount (Amens / Praying), commentCount |
 | `posts/{id}/likes/{uid}` · `comments/{id}` | likes and comments |
 | `reports/{id}` | moderation queue |
 | `admins/{uid}` | admin allow-list (console only) |
